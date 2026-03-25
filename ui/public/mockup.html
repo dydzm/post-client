@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post-Client Design Mockup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#0f172a',
+                        sidebar: '#1e293b',
+                        accent: '#3b82f6',
+                        sunset: {
+                            from: '#ff8c00',
+                            to: '#ff4500'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @font-face {
+            font-family: 'JetBrains Mono';
+            src: url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .sunset-text {
+            background: linear-gradient(to right, #ff8c00, #ff4500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="bg-dark text-slate-200 h-screen flex overflow-hidden">
+
+    <!-- Collection Sidebar -->
+    <aside class="w-64 bg-sidebar border-r border-slate-700 flex flex-col shrink-0">
+        <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+            <h2 class="font-bold text-sm uppercase tracking-wider text-slate-400">Collections</h2>
+            <div class="flex gap-2">
+                <button title="Import" class="text-slate-400 hover:text-white">📥</button>
+                <button title="Export" class="text-slate-400 hover:text-white">📤</button>
+                <button title="New" class="text-accent text-lg">+</button>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2">
+            <div class="space-y-1">
+                <details open class="group">
+                    <summary class="flex items-center gap-2 p-2 hover:bg-slate-700 rounded cursor-pointer list-none">
+                        <span class="group-open:rotate-90 transition-transform text-xs">▶</span>
+                        <span class="text-sm">Default Collection</span>
+                    </summary>
+                    <div class="pl-6 space-y-1 mt-1">
+                        <div class="p-2 text-xs hover:bg-slate-700 rounded cursor-pointer flex justify-between">
+                            <span class="text-green-400 font-bold mr-2">GET</span>
+                            <span class="truncate">Fetch Users</span>
+                        </div>
+                        <div class="p-2 text-xs bg-slate-700 rounded cursor-pointer flex justify-between border-l-2 border-accent">
+                            <span class="text-blue-400 font-bold mr-2">POST</span>
+                            <span class="truncate">Create User</span>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        
+        <!-- Top Tabs -->
+        <header class="h-10 bg-slate-900 border-b border-slate-700 flex items-center overflow-x-auto shrink-0">
+            <div class="flex h-full">
+                <div class="px-4 h-full flex items-center gap-2 border-r border-slate-700 bg-slate-800 text-sm">
+                    <span class="text-green-400 text-[10px] font-bold">GET</span> Fetch Users
+                    <button class="ml-2 text-slate-500 hover:text-slate-300">×</button>
+                </div>
+                <div class="px-4 h-full flex items-center gap-2 border-r border-slate-700 bg-dark text-sm border-t-2 border-accent">
+                    <span class="text-blue-400 text-[10px] font-bold">POST</span> Create User
+                    <button class="ml-2 text-slate-500 hover:text-slate-300">×</button>
+                </div>
+                <div class="px-4 h-full flex items-center text-slate-500 hover:text-slate-300 text-lg cursor-pointer">+</div>
+            </div>
+        </header>
+
+        <!-- Request & Response Workspace -->
+        <main class="flex-1 flex overflow-hidden">
+            
+            <!-- Left: Request Builder -->
+            <div class="w-1/2 flex flex-col border-r border-slate-700">
+                <!-- URL Bar -->
+                <div class="p-4 flex gap-2 border-b border-slate-700">
+                    <select class="bg-slate-800 border border-slate-700 rounded px-2 text-xs font-bold text-blue-400">
+                        <option>POST</option>
+                    </select>
+                    <input type="text" value="https://api.example.com/v1/users" class="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm mono focus:ring-1 focus:ring-accent outline-none">
+                    <button class="bg-accent hover:bg-blue-500 text-white text-xs font-bold px-4 py-1.5 rounded transition-colors">SEND</button>
+                </div>
+                <!-- Request Tabs -->
+                <div class="flex border-b border-slate-700 bg-slate-800/50">
+                    <button class="px-4 py-2 text-xs font-bold border-b-2 border-accent text-accent">Headers (3)</button>
+                    <button class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-300">Body</button>
+                    <button class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-300">Auth</button>
+                </div>
+                <!-- Request Content -->
+                <div class="flex-1 p-4 overflow-y-auto">
+                    <table class="w-full text-xs text-left">
+                        <thead>
+                            <tr class="text-slate-500 border-b border-slate-700">
+                                <th class="pb-2 font-normal">KEY</th>
+                                <th class="pb-2 font-normal">VALUE</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800">
+                            <tr><td class="py-2 text-slate-300">Content-Type</td><td class="py-2 text-slate-400">application/json</td></tr>
+                            <tr><td class="py-2 text-slate-300">Authorization</td><td class="py-2 text-slate-400">Bearer token_abc123...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Right: CLI & Response -->
+            <div class="w-1/2 flex flex-col overflow-hidden">
+                <!-- CLI (Top Half) -->
+                <div class="h-2/5 bg-black p-4 mono text-xs overflow-auto relative">
+                    <div class="text-slate-600 mb-2 uppercase tracking-tighter font-bold opacity-50">CLI Console</div>
+                    <!-- Mock Logo Simulation -->
+                    <pre class="sunset-text font-bold leading-none mb-4">
+ ██████╗  ██████╗ ███████╗████████╗
+ ██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝
+ ██████╔╝██║   ██║███████╗   ██║   
+ ██╔═══╝ ██║   ██║╚════██║   ██║   
+ ██║     ╚██████╔╝███████║   ██║   
+ ╚═╝      ╚═════╝ ╚══════╝   ╚═╝   
+ ██████╗██╗     ██╗███████╗███╗   ██╗████████╗
+██╔════╝██║     ██║██╔════╝████╗  ██║╚══██╔══╝
+██║     ██║     ██║█████╗  ██╔██╗ ██║   ██║   
+██║     ██║     ██║██╔══╝  ██║╚██╗██║   ██║   
+╚██████╗███████╗██║███████╗██║ ╚████║   ██║   
+ ╚═════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝   
+                    </pre>
+                    <div class="text-slate-400">$ POST https://api.example.com/v1/users</div>
+                    <div class="text-slate-500">Executing... <span class="text-green-500">DONE (124ms)</span></div>
+                    <div class="text-slate-400 cursor-blink animate-pulse">$ |</div>
+                </div>
+
+                <!-- Response (Bottom Half) -->
+                <div class="h-3/5 bg-slate-900 flex flex-col">
+                    <div class="flex justify-between items-center px-4 py-2 border-y border-slate-700 bg-slate-800 shrink-0">
+                        <div class="flex gap-4">
+                            <button class="text-xs font-bold text-accent border-b border-accent pb-0.5">Body</button>
+                            <button class="text-xs font-bold text-slate-500 hover:text-slate-300">Headers</button>
+                            <button class="text-xs font-bold text-slate-500 hover:text-slate-300">Preview</button>
+                        </div>
+                        <div class="text-[10px] text-slate-500">
+                            <span class="text-green-500 font-bold mr-2">200 OK</span>
+                            <span>1.2 KB</span> • <span>124ms</span>
+                        </div>
+                    </div>
+                    <div class="flex-1 p-4 mono text-xs text-blue-300 overflow-auto">
+                        <pre>
+{
+  "status": "success",
+  "data": {
+    "id": "usr_9921",
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "created_at": "2026-03-25T00:00:00Z"
+  }
+}
+                        </pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+</body>
+</html>
