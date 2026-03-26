@@ -4,6 +4,7 @@ import { useTabsStore } from '../stores/tabs'
 import axios from 'axios'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { useResizeObserver } from '@vueuse/core'
 import '@xterm/xterm/css/xterm.css'
 
 import { getAsciiLogo } from '../lib/logo'
@@ -130,7 +131,12 @@ watch(() => tabsStore.activeTab?.error, (newError) => {
 
 onMounted(() => {
   initTerminal()
-  window.addEventListener('resize', () => fitAddon?.fit())
+})
+
+useResizeObserver(terminalContainer, () => {
+  if (fitAddon) {
+    fitAddon.fit()
+  }
 })
 
 onUnmounted(() => {

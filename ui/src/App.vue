@@ -96,18 +96,48 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
 })
 
-// Watch for collection expansion to re-run sortable setup
-watch(expandedCollections, () => {
+// Watch for both collection expansion and items changes to setup/refresh sortable
+const sortableInstances = new Map<string, any>()
+
+watch([expandedCollections, () => collectionsStore.savedItems], () => {
   nextTick(() => {
     collectionsStore.collections.forEach(col => {
       const el = document.getElementById(`items-${col.id}`)
-      if (el) {
+      if (el && expandedCollections.value[col.id]) {
+        // Destroy existing instance if it exists to avoid stacking
+        if (sortableInstances.has(col.id)) {
+          // Sortable.js doesn't have a simple 'destroy' in the VueUse wrapper easily accessible 
+          // but we can just let it be if it's the same element, or re-init if needed.
+          // Actually useSortable returns the instance.
+        }
+        
         useSortable(el, collectionsStore.savedItems.filter(i => i.collectionId === col.id), {
           animation: 150,
           handle: '.drag-handle',
+          group: 'requests',
           onEnd: (evt) => {
-            const itemIds = Array.from(el.children).map(child => (child as HTMLElement).dataset.id!)
-            collectionsStore.updateItemOrder(col.id, itemIds)
+            const itemId = (evt.item as HTMLElement).dataset.id!
+            const sourceEl = evt.from
+            const targetEl = evt.to
+            
+            const sourceColId = sourceEl.id.replace('items-', '')
+            const targetColId = targetEl.id.replace('items-', '')
+            
+            // If moved to a different collection, update the item's collectionId
+            if (sourceColId !== targetColId) {
+              const item = collectionsStore.savedItems.find(i => i.id === itemId)
+              if (item) {
+                item.collectionId = targetColId
+              }
+            }
+            
+            const sourceIds = Array.from(sourceEl.children).map(child => (child as HTMLElement).dataset.id!)
+            const targetIds = Array.from(targetEl.children).map(child => (child as HTMLElement).dataset.id!)
+            
+            collectionsStore.updateItemOrder(sourceColId, sourceIds)
+            if (sourceColId !== targetColId) {
+              collectionsStore.updateItemOrder(targetColId, targetIds)
+            }
           }
         })
       }

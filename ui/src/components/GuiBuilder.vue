@@ -26,6 +26,43 @@ const COMMON_HEADERS = [
   'User-Agent', 'Upgrade', 'Via', 'Warning'
 ]
 
+const COMMON_HEADER_VALUES: Record<string, string[]> = {
+  'Content-Type': [
+    'application/json',
+    'application/x-www-form-urlencoded',
+    'multipart/form-data',
+    'text/plain',
+    'text/html',
+    'application/xml',
+    'application/javascript'
+  ],
+  'Accept': [
+    'application/json',
+    'application/xml',
+    'text/plain',
+    'text/html',
+    '*/*'
+  ],
+  'Authorization': [
+    'Bearer ',
+    'Basic '
+  ],
+  'Cache-Control': [
+    'no-cache',
+    'no-store',
+    'max-age=0',
+    'must-revalidate'
+  ],
+  'Connection': [
+    'keep-alive',
+    'close'
+  ]
+}
+
+const getHeaderValueOptions = (key: string) => {
+  return COMMON_HEADER_VALUES[key] || []
+}
+
 const tabsStore = useTabsStore()
 const collectionsStore = useCollectionsStore()
 const toastStore = useToastStore()
@@ -293,8 +330,11 @@ const saveToCollection = async (isSaveAs = false) => {
           <input type="checkbox" v-model="row.enabled" class="accent-blue-500" />
           <input type="text" v-model="row.key" list="common-headers" placeholder="Key" 
                  class="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-300 focus:border-blue-500 outline-none" />
-          <input type="text" v-model="row.value" placeholder="Value" 
+          <input type="text" v-model="row.value" :list="'values-' + index" placeholder="Value" 
                  class="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-300 focus:border-blue-500 outline-none" />
+          <datalist :id="'values-' + index">
+             <option v-for="v in getHeaderValueOptions(row.key)" :key="v" :value="v" />
+          </datalist>
           <button @click="removeHeader(index)" class="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <Trash2 class="w-4 h-4" />
           </button>

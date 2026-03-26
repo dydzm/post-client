@@ -169,14 +169,14 @@ const previewUrl = computed(() => {
       </div>
 
       <!-- Content Views -->
-      <div v-else class="h-full">
+      <div v-show="response" class="h-full">
         <!-- Body View -->
         <div v-show="activeResponseTab === 'Body'" class="h-full flex flex-col">
           <div ref="editorContainer" class="flex-1"></div>
         </div>
 
         <!-- Headers View -->
-        <div v-if="activeResponseTab === 'Headers'" class="h-full overflow-y-auto p-4">
+        <div v-if="activeResponseTab === 'Headers' && response" class="h-full overflow-y-auto p-4">
           <table class="w-full text-xs text-left font-mono">
             <thead>
               <tr class="text-slate-500 border-b border-slate-800">
@@ -194,7 +194,7 @@ const previewUrl = computed(() => {
         </div>
 
         <!-- Preview View -->
-        <div v-if="activeResponseTab === 'Preview'" class="h-full p-4">
+        <div v-if="activeResponseTab === 'Preview' && response" class="h-full p-4">
           <div v-if="isImage" class="h-full flex items-center justify-center p-4 border border-slate-800 rounded-lg bg-slate-900">
              <img :src="previewUrl" class="max-w-full max-h-full object-contain" />
           </div>
