@@ -2,11 +2,12 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useTabsStore } from '../stores/tabs'
 import { useCollectionsStore } from '../stores/collections'
+import { useToastStore } from '../stores/toast'
 import axios from 'axios'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import { Plus, Trash2, Play, Settings2, Code, FileJson, Save, FileUp, File, ShieldCheck, User, Lock, Key } from 'lucide-vue-next'
+import { Plus, Trash2, Play, Settings2, Code, FileJson, Save, FileUp, File, ShieldCheck, User, Lock, Key, ChevronDown } from 'lucide-vue-next'
 
 self.MonacoEnvironment = {
   getWorker(_, label) {
@@ -15,8 +16,18 @@ self.MonacoEnvironment = {
   }
 }
 
+const COMMON_HEADERS = [
+  'Accept', 'Accept-Charset', 'Accept-Encoding', 'Accept-Language', 'Accept-Ranges',
+  'Authorization', 'Cache-Control', 'Connection', 'Content-Encoding', 'Content-Length',
+  'Content-Type', 'Cookie', 'Date', 'Expect', 'Forwarded', 'From', 'Host',
+  'If-Match', 'If-Modified-Since', 'If-None-Match', 'If-Range', 'If-Unmodified-Since',
+  'Max-Forwards', 'Origin', 'Pragma', 'Proxy-Authorization', 'Range', 'Referer', 'TE',
+  'User-Agent', 'Upgrade', 'Via', 'Warning'
+]
+
 const tabsStore = useTabsStore()
 const collectionsStore = useCollectionsStore()
+const toastStore = useToastStore()
 const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
 const activeTabSection = ref('Headers')
 
@@ -24,11 +35,16 @@ const activeTab = computed(() => tabsStore.activeTab)
 
 const localUrl = ref(activeTab.value?.request.url || '')
 const localMethod = ref(activeTab.value?.request.method || 'GET')
+const localName = ref(activeTab.value?.name || 'New Request')
 
 watch(() => tabsStore.activeTabId, () => {
   if (activeTab.value) {
     localUrl.value = activeTab.value.request.url
     localMethod.value = activeTab.value.request.method
+    localName.value = activeTab.value.name
+    
+    // Sync headers from store to localRows
+    syncHeadersToRows()
   }
 })
 
@@ -36,10 +52,32 @@ watch([localUrl, localMethod], () => {
   tabsStore.updateActiveRequest({ url: localUrl.value, method: localMethod.value })
 })
 
+watch(localName, (newVal) => {
+  if (activeTab.value) {
+    activeTab.value.name = newVal
+  }
+})
+
 // Header management
 const headerRows = ref<{ key: string; value: string; enabled: boolean }[]>([])
+
+const syncHeadersToRows = () => {
+  const headers = activeTab.value?.request.headers || {}
+  headerRows.value = Object.entries(headers).map(([key, value]) => ({
+    key,
+    value,
+    enabled: true
+  }))
+  if (headerRows.value.length === 0) {
+    addHeader()
+  }
+}
+
 const addHeader = () => headerRows.value.push({ key: '', value: '', enabled: true })
-const removeHeader = (index: number) => headerRows.value.splice(index, 1)
+const removeHeader = (index: number) => {
+  headerRows.value.splice(index, 1)
+  if (headerRows.value.length === 0) addHeader()
+}
 
 watch(headerRows, (newRows) => {
   const headers: Record<string, string> = {}
@@ -70,7 +108,10 @@ const initEditor = () => {
   }
 }
 
-onMounted(() => initEditor())
+onMounted(() => {
+  syncHeadersToRows()
+  initEditor()
+})
 onUnmounted(() => editorInstance?.dispose())
 
 watch(() => tabsStore.activeTabId, () => {
@@ -125,8 +166,10 @@ const sendRequest = async () => {
   try {
     const res = await axios.post('http://localhost:8000/execute', finalRequest)
     activeTab.value.response = res.data
+    toastStore.addToast(`Request sent: ${res.data.status} OK`, 'success')
   } catch (err: any) {
     activeTab.value.error = err.response?.data?.detail || err.message
+    toastStore.addToast('Request failed', 'error')
   } finally {
     activeTab.value.isLoading = false
   }
@@ -142,32 +185,56 @@ const formatJson = () => {
 
 const saveToCollection = () => {
   if (!activeTab.value) return
-  const name = prompt('Enter request name:', activeTab.value.name || 'New Request')
-  if (name) {
-    collectionsStore.saveRequest(name, activeTab.value.request)
-    activeTab.value.name = name
-  }
+  
+  // Find collection to save to
+  const collectionId = activeTab.value.collectionId || 'default'
+  const itemId = collectionsStore.saveRequest(localName.value, activeTab.value.request, collectionId)
+  
+  // Link tab to this item
+  activeTab.value.itemId = itemId
+  activeTab.value.collectionId = collectionId
+  activeTab.value.name = localName.value
+  
+  toastStore.addToast('Request saved to collection', 'success')
 }
 </script>
 
 <template>
   <div class="flex flex-col h-full bg-slate-950">
-    <!-- URL Bar -->
-    <div class="p-4 flex flex-col gap-4 border-b border-slate-800 bg-slate-900/50 shrink-0">
+    <!-- Request Name & URL Bar -->
+    <div class="p-4 flex flex-col gap-3 border-b border-slate-700 bg-slate-900/30 shrink-0">
+      <!-- Name input -->
+      <div class="flex items-center gap-2 px-1">
+         <input v-model="localName" class="bg-transparent border-none text-[11px] font-bold text-slate-500 hover:text-slate-300 focus:text-blue-400 focus:ring-0 p-0 outline-none w-full uppercase tracking-tighter transition-colors" placeholder="Untitled Request" />
+      </div>
+
       <div class="flex gap-2">
-        <select v-model="localMethod" class="bg-slate-800 text-blue-400 font-bold border border-slate-700 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-28 transition-all">
-          <option v-for="m in methods" :key="m" :value="m">{{ m }}</option>
-        </select>
+        <div class="relative w-28 group">
+          <select v-model="localMethod" :class="['w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-xs font-bold focus:ring-1 focus:ring-accent outline-none appearance-none cursor-pointer transition-colors', 
+            localMethod === 'GET' ? 'text-green-400' : 
+            localMethod === 'POST' ? 'text-blue-400' : 
+            localMethod === 'PUT' ? 'text-yellow-400' : 
+            localMethod === 'PATCH' ? 'text-orange-400' : 
+            localMethod === 'DELETE' ? 'text-red-400' : 'text-slate-300']">
+            <option value="GET" class="bg-slate-900 text-green-400 font-bold">GET</option>
+            <option value="POST" class="bg-slate-900 text-blue-400 font-bold">POST</option>
+            <option value="PUT" class="bg-slate-900 text-yellow-400 font-bold">PUT</option>
+            <option value="PATCH" class="bg-slate-900 text-orange-400 font-bold">PATCH</option>
+            <option value="DELETE" class="bg-slate-900 text-red-400 font-bold">DELETE</option>
+          </select>
+          <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none text-slate-500 group-hover:text-slate-300 transition-colors">
+            <ChevronDown class="w-3.5 h-3.5" />
+          </div>
+        </div>
         <input type="text" v-model="localUrl" @keyup.enter="sendRequest" 
-               class="flex-1 bg-slate-800 text-slate-100 border border-slate-700 rounded px-4 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+               class="flex-1 bg-slate-800 text-slate-100 border border-slate-700 rounded px-3 py-1.5 text-xs mono focus:ring-1 focus:ring-accent outline-none transition-all" 
                placeholder="https://api.example.com/v1/resource" />
         <div class="flex gap-1">
-          <button @click="saveToCollection" class="p-2 bg-slate-800 border border-slate-700 rounded hover:bg-slate-700 text-slate-400 transition-colors" title="Save to Collection">
+          <button @click="saveToCollection" class="p-2 bg-slate-800 border border-slate-700 rounded hover:bg-slate-700 text-slate-400 transition-colors" title="Save">
             <Save class="w-4 h-4" />
           </button>
           <button @click="sendRequest" :disabled="activeTab?.isLoading" 
-                  class="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white px-6 py-2 rounded text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-900/20">
-            <Play v-if="!activeTab?.isLoading" class="w-4 h-4 fill-current" />
+                  class="bg-accent hover:bg-blue-500 disabled:bg-slate-800 text-white px-4 py-1.5 rounded text-xs font-bold transition-all">
             {{ activeTab?.isLoading ? 'SENDING...' : 'SEND' }}
           </button>
         </div>
@@ -175,13 +242,13 @@ const saveToCollection = () => {
     </div>
 
     <!-- Request Builder Tabs -->
-    <div class="flex border-b border-slate-800 bg-slate-900 shrink-0">
+    <div class="flex border-b border-slate-700 bg-slate-800/50 shrink-0">
       <button v-for="section in ['Headers', 'Body', 'Auth']" :key="section"
         @click="activeTabSection = section"
-        :class="['px-6 py-3 text-xs font-bold uppercase tracking-widest transition-all relative', 
-                 activeTabSection === section ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300']">
+        :class="['px-5 py-2 text-[10px] font-bold uppercase tracking-widest transition-all relative', 
+                 activeTabSection === section ? 'text-accent' : 'text-slate-500 hover:text-slate-300']">
         {{ section }}
-        <div v-if="activeTabSection === section" class="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500"></div>
+        <div v-if="activeTabSection === section" class="absolute bottom-0 left-0 w-full h-0.5 bg-accent"></div>
       </button>
     </div>
 
@@ -195,10 +262,17 @@ const saveToCollection = () => {
             <Plus class="w-3 h-3" /> ADD HEADER
           </button>
         </div>
+        
+        <datalist id="common-headers">
+           <option v-for="h in COMMON_HEADERS" :key="h" :value="h" />
+        </datalist>
+
         <div v-for="(row, index) in headerRows" :key="index" class="flex gap-2 items-center group">
           <input type="checkbox" v-model="row.enabled" class="accent-blue-500" />
-          <input type="text" v-model="row.key" placeholder="Key" class="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-300 focus:border-blue-500 outline-none" />
-          <input type="text" v-model="row.value" placeholder="Value" class="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-300 focus:border-blue-500 outline-none" />
+          <input type="text" v-model="row.key" list="common-headers" placeholder="Key" 
+                 class="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-300 focus:border-blue-500 outline-none" />
+          <input type="text" v-model="row.value" placeholder="Value" 
+                 class="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-300 focus:border-blue-500 outline-none" />
           <button @click="removeHeader(index)" class="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <Trash2 class="w-4 h-4" />
           </button>
@@ -268,7 +342,7 @@ const saveToCollection = () => {
             <p class="text-[10px] text-slate-500">Configure authentication for this request.</p>
           </div>
           <select v-if="activeTab" v-model="activeTab.request.auth.type" 
-                  class="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-xs text-blue-400 font-bold outline-none focus:ring-1 focus:ring-blue-500">
+                  class="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-xs text-blue-400 font-bold outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer pr-8">
             <option value="none">No Auth</option>
             <option value="bearer">Bearer Token</option>
             <option value="basic">Basic Auth</option>

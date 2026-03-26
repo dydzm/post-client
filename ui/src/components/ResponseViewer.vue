@@ -2,13 +2,33 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useTabsStore } from '../stores/tabs'
 import * as monaco from 'monaco-editor'
-import { FileJson, List, Eye, Clock, Hash, Copy, Check } from 'lucide-vue-next'
+import { FileJson, List, Eye, Clock, Hash, Copy, Check, X, Play } from 'lucide-vue-next'
 
 const tabsStore = useTabsStore()
 const activeTab = computed(() => tabsStore.activeTab)
 const response = computed(() => activeTab.value?.response)
 const activeResponseTab = ref('Body')
 const hasCopied = ref(false)
+
+const contentType = computed(() => {
+  const ct = response.value?.headers?.['content-type'] || response.value?.headers?.['Content-Type'] || ''
+  return ct.toLowerCase()
+})
+
+const isJson = computed(() => contentType.value.includes('json'))
+const isHtml = computed(() => contentType.value.includes('html'))
+const isImage = computed(() => contentType.value.startsWith('image/'))
+
+// Auto-switch tab based on content type when response arrives
+watch(response, (newRes) => {
+  if (newRes) {
+    if (isImage.value || isHtml.value) {
+      activeResponseTab.value = 'Preview'
+    } else {
+      activeResponseTab.value = 'Body'
+    }
+  }
+})
 
 // Monaco Editor for Body
 let editorInstance: monaco.editor.IStandaloneCodeEditor | null = null
@@ -17,7 +37,7 @@ const editorContainer = ref<HTMLElement | null>(null)
 const initEditor = () => {
   if (editorContainer.value) {
     editorInstance = monaco.editor.create(editorContainer.value, {
-      value: response.value?.body || '',
+      value: typeof response.value?.body === 'string' ? response.value.body : JSON.stringify(response.value?.body, null, 2) || '',
       language: 'json',
       theme: 'vs-dark',
       readOnly: true,
@@ -26,23 +46,35 @@ const initEditor = () => {
       scrollBeyondLastLine: false,
       padding: { top: 10, bottom: 10 }
     })
+    updateEditorLanguage()
   }
 }
 
-watch(() => response.value?.body, (newBody) => {
+const updateEditorLanguage = () => {
+  if (!editorInstance || !editorInstance.getModel()) return
+  
+  if (isJson.value) {
+    monaco.editor.setModelLanguage(editorInstance.getModel()!, 'json')
+  } else if (isHtml.value) {
+    monaco.editor.setModelLanguage(editorInstance.getModel()!, 'html')
+  } else if (contentType.value.includes('xml')) {
+    monaco.editor.setModelLanguage(editorInstance.getModel()!, 'xml')
+  } else {
+    monaco.editor.setModelLanguage(editorInstance.getModel()!, 'plaintext')
+  }
+}
+
+watch([() => response.value?.body, activeResponseTab], ([newBody, newTab]) => {
   if (editorInstance) {
-    editorInstance.setValue(newBody || '')
-    // Auto-detect language if possible
-    const contentType = response.value?.headers?.['content-type'] || ''
-    if (contentType.includes('html')) {
-      monaco.editor.setModelLanguage(editorInstance.getModel()!, 'html')
-    } else if (contentType.includes('json')) {
-      monaco.editor.setModelLanguage(editorInstance.getModel()!, 'json')
-    } else if (contentType.includes('xml')) {
-      monaco.editor.setModelLanguage(editorInstance.getModel()!, 'xml')
+    if (newTab === 'Body') {
+      const content = typeof newBody === 'string' ? newBody : JSON.stringify(newBody, null, 2)
+      editorInstance.setValue(content || '')
+      updateEditorLanguage()
+      // Force layout update when switching to Body tab
+      setTimeout(() => editorInstance?.layout(), 10)
     }
   }
-})
+}, { immediate: true })
 
 onMounted(() => {
   initEditor()
@@ -60,28 +92,23 @@ const copyToClipboard = () => {
   }
 }
 
-// Preview Logic
-const isImageResponse = computed(() => {
-  const ct = response.value?.headers?.['content-type'] || ''
-  return ct.startsWith('image/')
-})
-
-const isHtmlResponse = computed(() => {
-  const ct = response.value?.headers?.['content-type'] || ''
-  return ct.includes('html')
-})
-
 const previewUrl = computed(() => {
   if (!response.value?.body) return ''
-  if (isImageResponse.value) {
-    // This assumes the body is a URL or base64. 
-    // In a real app, you might need to handle Blob URLs for binary data.
-    return response.value.body 
+  
+  if (isImage.value) {
+    // If it's a URL or base64 already
+    if (response.value.body.startsWith('http') || response.value.body.startsWith('data:')) {
+      return response.value.body
+    }
+    // Otherwise treat as raw binary data (might need base64 encoding if not already)
+    return `data:${contentType.value};base64,${response.value.body}`
   }
-  if (isHtmlResponse.value) {
+  
+  if (isHtml.value) {
     const blob = new Blob([response.value.body], { type: 'text/html' })
     return URL.createObjectURL(blob)
   }
+  
   return ''
 })
 
@@ -90,33 +117,28 @@ const previewUrl = computed(() => {
 <template>
   <div class="h-full flex flex-col bg-slate-950 overflow-hidden">
     <!-- Response Info Bar -->
-    <div class="flex justify-between items-center px-4 py-2 bg-slate-900 border-b border-slate-800 shrink-0">
+    <div class="flex justify-between items-center px-4 py-2 bg-slate-900 border-b border-slate-700 shrink-0">
       <div class="flex gap-4">
         <button v-for="tab in ['Body', 'Headers', 'Preview']" :key="tab"
           @click="activeResponseTab = tab"
-          :class="['flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-all px-2 py-1 rounded', 
-                   activeResponseTab === tab ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300']">
-          <FileJson v-if="tab === 'Body'" class="w-3 h-3" />
-          <List v-if="tab === 'Headers'" class="w-3 h-3" />
-          <Eye v-if="tab === 'Preview'" class="w-3 h-3" />
+          :class="['flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-all px-0 py-1 relative', 
+                   activeResponseTab === tab ? 'text-accent' : 'text-slate-500 hover:text-slate-300']">
           {{ tab }}
+          <div v-if="activeResponseTab === tab" class="absolute bottom-[-9px] left-0 w-full h-0.5 bg-accent"></div>
         </button>
       </div>
 
       <div v-if="response" class="flex items-center gap-4 text-[10px]">
-        <div class="flex items-center gap-1 text-slate-400">
-          <Hash class="w-3 h-3" />
+        <div class="flex items-center gap-2">
           <span :class="['font-bold', response.status >= 200 && response.status < 300 ? 'text-green-500' : 'text-red-500']">
-            {{ response.status }}
+            {{ response.status }} {{ response.status >= 200 && response.status < 300 ? 'OK' : 'ERROR' }}
           </span>
+          <span class="text-slate-500">•</span>
+          <span class="font-bold text-slate-500 uppercase">{{ response.time_ms }}ms</span>
         </div>
-        <div class="flex items-center gap-1 text-slate-400">
-          <Clock class="w-3 h-3" />
-          <span class="font-bold text-slate-300">{{ response.time_ms }}ms</span>
-        </div>
-        <button @click="copyToClipboard" class="hover:text-white transition-colors">
-          <Check v-if="hasCopied" class="w-3 h-3 text-green-500" />
-          <Copy v-else class="w-3 h-3" />
+        <button @click="copyToClipboard" class="text-slate-500 hover:text-white transition-colors">
+          <Check v-if="hasCopied" class="w-3.5 h-3.5 text-green-500" />
+          <Copy v-else class="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
@@ -173,14 +195,18 @@ const previewUrl = computed(() => {
 
         <!-- Preview View -->
         <div v-if="activeResponseTab === 'Preview'" class="h-full p-4">
-          <div v-if="isImageResponse" class="h-full flex items-center justify-center p-4 border border-slate-800 rounded-lg bg-slate-900">
+          <div v-if="isImage" class="h-full flex items-center justify-center p-4 border border-slate-800 rounded-lg bg-slate-900">
              <img :src="previewUrl" class="max-w-full max-h-full object-contain" />
           </div>
-          <div v-else-if="isHtmlResponse" class="h-full border border-slate-800 rounded-lg bg-white overflow-hidden">
+          <div v-else-if="isHtml" class="h-full border border-slate-800 rounded-lg bg-white overflow-hidden">
              <iframe :src="previewUrl" class="w-full h-full border-none"></iframe>
           </div>
-          <div v-else class="h-full flex items-center justify-center text-slate-600 text-xs italic">
-             Preview not available for this content type
+          <div v-else-if="isJson" class="h-full flex flex-col bg-slate-900 border border-slate-800 rounded-lg overflow-hidden p-4">
+             <div class="text-[10px] text-slate-500 mb-2 uppercase font-bold tracking-widest">Formatted JSON Preview</div>
+             <pre class="flex-1 text-xs text-blue-300 font-mono overflow-auto">{{ JSON.stringify(JSON.parse(response.body), null, 2) }}</pre>
+          </div>
+          <div v-else class="h-full p-4 border border-slate-800 rounded-lg bg-slate-900 overflow-auto">
+             <pre class="text-xs text-slate-300 font-mono">{{ response.body }}</pre>
           </div>
         </div>
       </div>

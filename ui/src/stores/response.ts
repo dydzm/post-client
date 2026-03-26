@@ -1,12 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-
-export interface ApiResponse {
-  status: number
-  headers: Record<string, string>
-  body: string
-  time_ms: number
-}
+import type { ApiResponse } from './types'
 
 export const useResponseStore = defineStore('response', () => {
   const response = ref<ApiResponse | null>(null)

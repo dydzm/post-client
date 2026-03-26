@@ -6,6 +6,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
+import { getAsciiLogo } from '../lib/logo'
+
 const tabsStore = useTabsStore()
 const terminalContainer = ref<HTMLElement | null>(null)
 
@@ -19,15 +21,16 @@ const initTerminal = async () => {
   term = new Terminal({
     theme: { 
       background: '#000000', 
-      foreground: '#e2e8f0',
+      foreground: '#cbd5e1',
       cursor: '#3b82f6',
       selectionBackground: '#1e293b'
     },
-    fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-    fontSize: 13,
+    fontFamily: '"JetBrains Mono", monospace',
+    fontSize: 12,
     cursorBlink: true,
     allowTransparency: true,
-    rows: 10
+    rows: 10,
+    lineHeight: 1.2
   })
 
   fitAddon = new FitAddon()
@@ -35,13 +38,8 @@ const initTerminal = async () => {
   term.open(terminalContainer.value)
   fitAddon.fit()
 
-  // Fetch and display the sunset logo
-  try {
-    const res = await axios.get('http://localhost:8000/logo')
-    term.writeln(res.data.logo)
-  } catch (e) {
-    term.writeln('\x1b[33mPOST CLIENT\x1b[0m')
-  }
+  // Display the local logo
+  term.write(getAsciiLogo())
 
   term.writeln('\r\n\x1b[90mWelcome to the Hybrid CLI. Type a request or use the GUI.\x1b[0m')
   term.writeln('\x1b[90mExample: GET https://api.example.com/data\x1b[0m')
@@ -91,8 +89,7 @@ const executeRequest = async () => {
   const activeTab = tabsStore.activeTab
   if (!activeTab) return
 
-  term.writeln(`\x1b[34mExecuting:\x1b[0m ${activeTab.request.method} ${activeTab.request.url}...`)
-  
+  // Just trigger the loading state, the watcher will handle the terminal output
   activeTab.isLoading = true
   activeTab.error = null
   activeTab.response = null
@@ -100,22 +97,36 @@ const executeRequest = async () => {
   try {
     const res = await axios.post('http://localhost:8000/execute', activeTab.request)
     activeTab.response = res.data
-    term.writeln(`\x1b[32mSuccess:\x1b[0m ${res.data.status} [${res.data.time_ms}ms]`)
   } catch (err: any) {
     activeTab.error = err.response?.data?.detail || err.message
-    term.writeln(`\x1b[31mFailed:\x1b[0m ${activeTab.error}`)
   } finally {
     activeTab.isLoading = false
   }
 }
 
-// Sync GUI changes to Terminal visually (optional feedback)
-watch(() => tabsStore.activeTab?.request, (newReq) => {
-  if (newReq && term) {
-    // We don't want to spam the terminal for every keystroke, 
-    // maybe just show a subtle indicator or nothing.
+// Watch for execution state changes (from GUI or CLI)
+watch(() => tabsStore.activeTab?.isLoading, (loading) => {
+  const activeTab = tabsStore.activeTab
+  if (!activeTab || !term) return
+
+  if (loading) {
+    term.writeln(`\r\n\x1b[34mExecuting:\x1b[0m ${activeTab.request.method} ${activeTab.request.url}...`)
   }
-}, { deep: true })
+})
+
+watch(() => tabsStore.activeTab?.response, (newResponse) => {
+  if (newResponse && term) {
+    term.writeln(`\x1b[32mSuccess:\x1b[0m ${newResponse.status} [${newResponse.time_ms}ms]`)
+    term.write('\r\n\x1b[34m$\x1b[0m ')
+  }
+})
+
+watch(() => tabsStore.activeTab?.error, (newError) => {
+  if (newError && term) {
+    term.writeln(`\x1b[31mFailed:\x1b[0m ${newError}`)
+    term.write('\r\n\x1b[34m$\x1b[0m ')
+  }
+})
 
 onMounted(() => {
   initTerminal()

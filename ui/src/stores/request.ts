@@ -1,13 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-
-export interface ApiRequest {
-  method: string
-  url: string
-  headers: Record<string, string>
-  query: Record<string, string>
-  body: string // Storing as string for Monaco editor, parse to JSON before sending if needed
-}
+import type { ApiRequest } from './types'
 
 export const useRequestStore = defineStore('request', () => {
   const req = ref<ApiRequest>({
@@ -15,7 +8,10 @@ export const useRequestStore = defineStore('request', () => {
     url: 'https://jsonplaceholder.typicode.com/todos/1',
     headers: {},
     query: {},
-    body: ''
+    body: '',
+    bodyType: 'json',
+    files: [],
+    auth: { type: 'none' }
   })
   
   // Track sync source to prevent infinite loops

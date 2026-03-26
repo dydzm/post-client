@@ -1,1 +1,32 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+@theme {
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  
+  /* Mockup Colors */
+  --color-dark: #0f172a;
+  --color-sidebar: #1e293b;
+  --color-accent: #3b82f6;
+  --color-sunset-from: #ff8c00;
+  --color-sunset-to: #ff4500;
+  
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+}
+
+.sunset-text {
+  background: linear-gradient(to right, var(--color-sunset-from), var(--color-sunset-to));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.mono { font-family: var(--font-mono); }
+
+@layer base {
+  body {
+    @apply bg-dark text-slate-200 font-sans;
+  }
+}

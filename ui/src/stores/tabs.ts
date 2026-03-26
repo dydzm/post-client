@@ -1,31 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-
-export interface ApiRequest {
-  method: string
-  url: string
-  headers: Record<string, string>
-  query: Record<string, string>
-  body: string
-  bodyType: 'json' | 'multipart' | 'raw'
-  files: { key: string; name: string; content: string; type: string }[]
-  auth: {
-    type: 'none' | 'bearer' | 'basic'
-    token?: string
-    username?: string
-    password?: string
-  }
-}
-
-export interface ApiResponse {
-  status: number
-  headers: Record<string, string>
-  body: string
-  time_ms: number
-}
+import type { ApiRequest, ApiResponse } from './types'
 
 export interface Tab {
   id: string
+  collectionId?: string
+  itemId?: string
   name: string
   request: ApiRequest
   response: ApiResponse | null
@@ -60,10 +40,21 @@ export const useTabsStore = defineStore('tabs', () => {
     return tabs.value.find(t => t.id === activeTabId.value) || tabs.value[0]
   })
 
-  const addTab = (name = 'New Request', request?: ApiRequest) => {
+  const addTab = (name = 'New Request', request?: ApiRequest, itemId?: string, collectionId?: string) => {
+    // If opening a request that is already open in a tab, switch to it
+    if (itemId) {
+      const existingTab = tabs.value.find(t => t.itemId === itemId)
+      if (existingTab) {
+        activeTabId.value = existingTab.id
+        return
+      }
+    }
+
     const id = Math.random().toString(36).substring(7)
     tabs.value.push({
       id,
+      itemId,
+      collectionId,
       name,
       request: request ? JSON.parse(JSON.stringify(request)) : {
         method: 'GET',
@@ -96,7 +87,6 @@ export const useTabsStore = defineStore('tabs', () => {
     if (activeTab.value) {
       activeTab.value.request = { ...activeTab.value.request, ...data }
       
-      // Auto-prefix URL if protocol missing and user finished typing
       if (data.url && !data.url.includes('://')) {
         const url = data.url.trim()
         if (url.startsWith('localhost') || url.startsWith('127.0.0.1')) {
