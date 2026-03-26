@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useTabsStore } from '../stores/tabs'
 import { useCollectionsStore } from '../stores/collections'
 import { useToastStore } from '../stores/toast'
+import { useModalStore } from '../stores/modal'
 import axios from 'axios'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -28,6 +29,7 @@ const COMMON_HEADERS = [
 const tabsStore = useTabsStore()
 const collectionsStore = useCollectionsStore()
 const toastStore = useToastStore()
+const modalStore = useModalStore()
 const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
 const activeTabSection = ref('Headers')
 
@@ -180,22 +182,37 @@ const formatJson = () => {
     const currentVal = editorInstance?.getValue() || ''
     const formatted = JSON.stringify(JSON.parse(currentVal), null, 2)
     editorInstance?.setValue(formatted)
-  } catch (e) { alert('Invalid JSON') }
+  } catch (e) { 
+    toastStore.addToast('Invalid JSON format', 'error')
+  }
 }
 
-const saveToCollection = () => {
+const saveToCollection = async (isSaveAs = false) => {
   if (!activeTab.value) return
   
-  // Find collection to save to
-  const collectionId = activeTab.value.collectionId || 'default'
-  const itemId = collectionsStore.saveRequest(localName.value, activeTab.value.request, collectionId)
-  
-  // Link tab to this item
-  activeTab.value.itemId = itemId
-  activeTab.value.collectionId = collectionId
-  activeTab.value.name = localName.value
-  
-  toastStore.addToast('Request saved to collection', 'success')
+  // If it's a new request or "Save As", show modal
+  if (!activeTab.value.itemId || isSaveAs) {
+    const result = await modalStore.open('save', {
+      title: isSaveAs ? 'Save Request As' : 'Save Request',
+      data: {
+        name: isSaveAs ? `${localName.value} (Copy)` : localName.value,
+        collectionId: activeTab.value.collectionId || 'default'
+      }
+    }) as { name: string, collectionId: string }
+    
+    if (result) {
+      const itemId = collectionsStore.saveRequest(result.name, activeTab.value.request, result.collectionId, isSaveAs)
+      activeTab.value.itemId = itemId
+      activeTab.value.collectionId = result.collectionId
+      activeTab.value.name = result.name
+      localName.value = result.name
+      toastStore.addToast(`Request saved to ${result.collectionId === 'default' ? 'Default' : 'Collection'}`, 'success')
+    }
+  } else {
+    // Existing request, silent save
+    collectionsStore.updateRequest(activeTab.value.itemId, activeTab.value.request, localName.value)
+    toastStore.addToast('Request updated', 'success')
+  }
 }
 </script>
 
@@ -205,7 +222,7 @@ const saveToCollection = () => {
     <div class="p-4 flex flex-col gap-3 border-b border-slate-700 bg-slate-900/30 shrink-0">
       <!-- Name input -->
       <div class="flex items-center gap-2 px-1">
-         <input v-model="localName" class="bg-transparent border-none text-[11px] font-bold text-slate-500 hover:text-slate-300 focus:text-blue-400 focus:ring-0 p-0 outline-none w-full uppercase tracking-tighter transition-colors" placeholder="Untitled Request" />
+         <input v-model="localName" class="bg-transparent border-none text-[11px] font-bold text-slate-500 hover:text-slate-300 focus:text-blue-400 focus:ring-0 p-0 outline-none w-full tracking-tighter transition-colors" placeholder="Untitled Request" />
       </div>
 
       <div class="flex gap-2">
@@ -230,9 +247,14 @@ const saveToCollection = () => {
                class="flex-1 bg-slate-800 text-slate-100 border border-slate-700 rounded px-3 py-1.5 text-xs mono focus:ring-1 focus:ring-accent outline-none transition-all" 
                placeholder="https://api.example.com/v1/resource" />
         <div class="flex gap-1">
-          <button @click="saveToCollection" class="p-2 bg-slate-800 border border-slate-700 rounded hover:bg-slate-700 text-slate-400 transition-colors" title="Save">
-            <Save class="w-4 h-4" />
-          </button>
+          <div class="flex bg-slate-800 border border-slate-700 rounded overflow-hidden">
+            <button @click="saveToCollection(false)" class="p-2 hover:bg-slate-700 text-slate-400 border-r border-slate-700 transition-colors" title="Save (Ctrl+S)">
+              <Save class="w-4 h-4" />
+            </button>
+            <button @click="saveToCollection(true)" class="p-2 hover:bg-slate-700 text-slate-400 transition-colors" title="Save As">
+              <span class="text-[10px] font-bold px-1">AS</span>
+            </button>
+          </div>
           <button @click="sendRequest" :disabled="activeTab?.isLoading" 
                   class="bg-accent hover:bg-blue-500 disabled:bg-slate-800 text-white px-4 py-1.5 rounded text-xs font-bold transition-all">
             {{ activeTab?.isLoading ? 'SENDING...' : 'SEND' }}

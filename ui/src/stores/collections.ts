@@ -48,13 +48,13 @@ export const useCollectionsStore = defineStore('collections', () => {
     savedItems.value = savedItems.value.filter(item => item.collectionId !== id)
   }
 
-  const saveRequest = (name: string, request: ApiRequest, collectionId = 'default') => {
+  const saveRequest = (name: string, request: ApiRequest, collectionId = 'default', forceNew = false) => {
     const id = Math.random().toString(36).substring(7)
     // Deep copy request
     const clonedRequest = JSON.parse(JSON.stringify(request))
     
-    // Check if item with same name exists in this collection, if so update it
-    const existingIndex = savedItems.value.findIndex(item => item.name === name && item.collectionId === collectionId)
+    // Check if item with same name exists in this collection, if so update it (unless forceNew is true)
+    const existingIndex = forceNew ? -1 : savedItems.value.findIndex(item => item.name === name && item.collectionId === collectionId)
     
     if (existingIndex !== -1) {
       savedItems.value[existingIndex].request = clonedRequest
@@ -71,14 +71,51 @@ export const useCollectionsStore = defineStore('collections', () => {
     }
   }
 
+  const duplicateRequest = (id: string) => {
+    const original = savedItems.value.find(item => item.id === id)
+    if (original) {
+      const newId = Math.random().toString(36).substring(7)
+      savedItems.value.push({
+        ...JSON.parse(JSON.stringify(original)),
+        id: newId,
+        name: `${original.name} (Copy)`,
+        createdAt: Date.now()
+      })
+      return newId
+    }
+  }
+
+  const updateItemOrder = (collectionId: string, itemIds: string[]) => {
+    // Create a map of items to reorder
+    const itemsMap = new Map(savedItems.value.map(item => [item.id, item]))
+    
+    // Get items NOT in this collection
+    const otherItems = savedItems.value.filter(item => item.collectionId !== collectionId)
+    
+    // Reorder items in this collection
+    const reorderedItems = itemIds.map(id => {
+      const item = itemsMap.get(id)
+      if (item) {
+        return { ...item, collectionId } // Ensure it's in the target collection
+      }
+      return null
+    }).filter(item => item !== null) as CollectionItem[]
+    
+    // Combine back
+    savedItems.value = [...otherItems, ...reorderedItems]
+  }
+
   const removeRequest = (id: string) => {
     savedItems.value = savedItems.value.filter(item => item.id !== id)
   }
 
-  const updateRequest = (id: string, request: ApiRequest) => {
+  const updateRequest = (id: string, request: ApiRequest, name?: string) => {
     const index = savedItems.value.findIndex(item => item.id === id)
     if (index !== -1) {
       savedItems.value[index].request = JSON.parse(JSON.stringify(request))
+      if (name) {
+        savedItems.value[index].name = name
+      }
     }
   }
 
@@ -116,6 +153,8 @@ export const useCollectionsStore = defineStore('collections', () => {
     renameCollection,
     deleteCollection,
     saveRequest,
+    duplicateRequest,
+    updateItemOrder,
     removeRequest,
     updateRequest,
     exportCollections

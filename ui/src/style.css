@@ -29,4 +29,11 @@
   body {
     @apply bg-dark text-slate-200 font-sans;
   }
+
+  .default-theme.splitpanes--vertical>.splitpanes__splitter {
+    @apply !w-[1px] !border-l-slate-500;
+  }
+  .default-theme.splitpanes .splitpanes .splitpanes__splitter {
+    @apply !h-[1px] !border-t-slate-500;
+  }
 }

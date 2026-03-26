@@ -1,18 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import { useTabsStore } from './stores/tabs'
 import { useCollectionsStore } from './stores/collections'
+import { useModalStore } from './stores/modal'
+import { useSortable } from '@vueuse/integrations/useSortable'
 import GuiBuilder from './components/GuiBuilder.vue'
 import CliTerminal from './components/CliTerminal.vue'
 import ResponseViewer from './components/ResponseViewer.vue'
 import ToolsSidebar from './components/ToolsSidebar.vue'
 import Toast from './components/Toast.vue'
-import { Menu, Plus, X, FolderTree, Download, Upload, GripVertical, ArrowLeftRight, LayoutGrid, Trash2, Edit3, ChevronRight, ChevronDown, Wrench } from 'lucide-vue-next'
+
+// Modal Components
+import SaveRequestModal from './components/SaveRequestModal.vue'
+import CollectionModal from './components/CollectionModal.vue'
+import ConfirmModal from './components/ConfirmModal.vue'
+
+import { Menu, Plus, X, FolderTree, Download, Upload, GripVertical, ArrowLeftRight, LayoutGrid, Trash2, Edit3, ChevronRight, ChevronDown, Wrench, Copy } from 'lucide-vue-next'
 
 const tabsStore = useTabsStore()
 const collectionsStore = useCollectionsStore()
+const modalStore = useModalStore()
+
 const isSidebarOpen = ref(window.innerWidth > 1024)
 const isToolsOpen = ref(true) // Default open
 const isMobile = ref(window.innerWidth < 768)
@@ -33,18 +43,44 @@ const toggleCollection = (id: string) => {
   expandedCollections.value[id] = !expandedCollections.value[id]
 }
 
-const addNewCollection = () => {
-  const name = prompt('Collection Name:')
+const addNewCollection = async () => {
+  const name = await modalStore.open('collection', { title: 'New Collection' }) as string
   if (name) {
     collectionsStore.addCollection(name)
   }
 }
 
-const renameCollection = (id: string, currentName: string) => {
-  const newName = prompt('Rename Collection:', currentName)
+const renameCollection = async (id: string, currentName: string) => {
+  const newName = await modalStore.open('collection', { title: 'Rename Collection', data: { name: currentName } }) as string
   if (newName) {
     collectionsStore.renameCollection(id, newName)
   }
+}
+
+const deleteCollection = async (id: string, name: string) => {
+  const confirmed = await modalStore.open('confirm', {
+    title: 'Delete Collection',
+    message: `Are you sure you want to delete "${name}"? All requests inside will be lost.`,
+    confirmLabel: 'Delete'
+  })
+  if (confirmed) {
+    collectionsStore.deleteCollection(id)
+  }
+}
+
+const deleteRequest = async (id: string, name: string) => {
+  const confirmed = await modalStore.open('confirm', {
+    title: 'Delete Request',
+    message: `Delete "${name}"?`,
+    confirmLabel: 'Delete'
+  })
+  if (confirmed) {
+    collectionsStore.removeRequest(id)
+  }
+}
+
+const duplicateRequest = (id: string) => {
+  collectionsStore.duplicateRequest(id)
 }
 
 const exportAll = () => {
@@ -59,6 +95,25 @@ const handleResize = () => {
 onMounted(() => {
   window.addEventListener('resize', handleResize)
 })
+
+// Watch for collection expansion to re-run sortable setup
+watch(expandedCollections, () => {
+  nextTick(() => {
+    collectionsStore.collections.forEach(col => {
+      const el = document.getElementById(`items-${col.id}`)
+      if (el) {
+        useSortable(el, collectionsStore.savedItems.filter(i => i.collectionId === col.id), {
+          animation: 150,
+          handle: '.drag-handle',
+          onEnd: (evt) => {
+            const itemIds = Array.from(el.children).map(child => (child as HTMLElement).dataset.id!)
+            collectionsStore.updateItemOrder(col.id, itemIds)
+          }
+        })
+      }
+    })
+  })
+}, { deep: true, immediate: true })
 
 const importCollection = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
@@ -79,7 +134,7 @@ const importCollection = (event: Event) => {
           })
         }
       } catch (err) {
-        alert('Invalid collection file')
+        modalStore.open('confirm', { title: 'Import Failed', message: 'Invalid collection file.', confirmLabel: 'OK' })
       }
     }
     reader.readAsText(file)
@@ -164,18 +219,19 @@ const openSavedRequest = (item: any) => {
                       <button @click.stop="renameCollection(col.id, col.name)" class="p-1 text-slate-500 hover:text-accent">
                         <Edit3 class="w-3 h-3" />
                       </button>
-                      <button @click.stop="collectionsStore.deleteCollection(col.id)" class="p-1 text-slate-500 hover:text-red-400">
+                      <button @click.stop="deleteCollection(col.id, col.name)" class="p-1 text-slate-500 hover:text-red-400">
                         <Trash2 class="w-3 h-3" />
                       </button>
                    </div>
                 </div>
 
                 <!-- Collection Items -->
-                <div v-if="expandedCollections[col.id]" class="ml-5 mt-1 space-y-0.5 border-l border-slate-700">
+                <div v-if="expandedCollections[col.id]" :id="'items-' + col.id" class="ml-5 mt-1 space-y-0.5 border-l border-slate-700 min-h-[10px]">
                    <div v-for="item in collectionsStore.savedItems.filter(i => i.collectionId === col.id)" :key="item.id" 
+                        :data-id="item.id"
                         class="group flex items-center justify-between p-1.5 pl-3 hover:bg-slate-700 rounded-r cursor-pointer transition-colors"
                         @click="openSavedRequest(item)">
-                      <div class="flex items-center gap-2 overflow-hidden">
+                      <div class="flex items-center gap-2 overflow-hidden flex-1 drag-handle">
                         <span :class="['text-[9px] font-bold w-9 shrink-0', 
                           item.request.method === 'GET' ? 'text-green-400' : 
                           item.request.method === 'POST' ? 'text-blue-400' : 'text-yellow-400']">
@@ -183,10 +239,15 @@ const openSavedRequest = (item: any) => {
                         </span>
                         <span class="text-[11px] text-slate-400 truncate">{{ item.name }}</span>
                       </div>
-                      <button @click.stop="collectionsStore.removeRequest(item.id)" 
-                              class="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                        <Trash2 class="w-3 h-3" />
-                      </button>
+                      <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity px-1">
+                        <button @click.stop="duplicateRequest(item.id)" class="text-slate-500 hover:text-accent">
+                          <Copy class="w-3 h-3" />
+                        </button>
+                        <button @click.stop="deleteRequest(item.id, item.name)" 
+                                class="text-slate-500 hover:text-red-400">
+                          <Trash2 class="w-3 h-3" />
+                        </button>
+                      </div>
                    </div>
                 </div>
              </div>
@@ -234,12 +295,35 @@ const openSavedRequest = (item: any) => {
         </ToolsSidebar>
       </transition>
     </div>
+
+    <!-- Modals -->
+    <SaveRequestModal v-if="modalStore.activeType === 'save'" />
+    <CollectionModal v-if="modalStore.activeType === 'collection'" />
+    <ConfirmModal v-if="modalStore.activeType === 'confirm'" />
+
     <Toast />
   </div>
 </template>
 
 <style>
-/* ... (previous styles) ... */
+.slide-enter-active, .slide-leave-active { transition: all 0.3s ease; }
+.slide-enter-from, .slide-leave-to { transform: translateX(-100%); }
+
 .slide-right-enter-active, .slide-right-leave-active { transition: all 0.3s ease; }
 .slide-right-enter-from, .slide-right-leave-to { transform: translateX(100%); opacity: 0; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+.drag-handle { cursor: grab; }
+.drag-handle:active { cursor: grabbing; }
+
+/* Transitions */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
