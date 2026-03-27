@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useTabsStore } from '../stores/tabs'
+import { useCollectionsStore } from '../stores/collections'
 import axios from 'axios'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -10,6 +11,7 @@ import '@xterm/xterm/css/xterm.css'
 import { getAsciiLogo } from '../lib/logo'
 
 const tabsStore = useTabsStore()
+const collectionsStore = useCollectionsStore()
 const terminalContainer = ref<HTMLElement | null>(null)
 
 let term: Terminal
@@ -80,7 +82,17 @@ const parseInput = (input: string) => {
     const url = parts[1]
     
     tabsStore.updateActiveRequest({ method, url })
-    term.writeln(`\x1b[32mSynced to GUI:\x1b[0m ${method} ${url}`)
+    
+    // Show interpolated URL in feedback if variables are used
+    const col = collectionsStore.collections.find(c => c.id === tabsStore.activeTab?.collectionId)
+    const vars = col?.variables || {}
+    const displayUrl = collectionsStore.interpolate(url, vars)
+    
+    if (displayUrl !== url) {
+      term.writeln(`\x1b[32mSynced to GUI:\x1b[0m ${method} ${url} \x1b[90m(${displayUrl})\x1b[0m`)
+    } else {
+      term.writeln(`\x1b[32mSynced to GUI:\x1b[0m ${method} ${url}`)
+    }
   } else {
     term.writeln('\x1b[31mError:\x1b[0m Invalid command. Use: <METHOD> <URL>')
   }
@@ -90,13 +102,15 @@ const executeRequest = async () => {
   const activeTab = tabsStore.activeTab
   if (!activeTab) return
 
-  // Just trigger the loading state, the watcher will handle the terminal output
+  // Apply variable interpolation
+  const finalRequest = collectionsStore.getInterpolatedRequest(activeTab.request, activeTab.collectionId)
+
   activeTab.isLoading = true
   activeTab.error = null
   activeTab.response = null
   
   try {
-    const res = await axios.post('http://localhost:8000/execute', activeTab.request)
+    const res = await axios.post('http://localhost:8000/execute', finalRequest)
     activeTab.response = res.data
   } catch (err: any) {
     activeTab.error = err.response?.data?.detail || err.message
@@ -111,7 +125,12 @@ watch(() => tabsStore.activeTab?.isLoading, (loading) => {
   if (!activeTab || !term) return
 
   if (loading) {
-    term.writeln(`\r\n\x1b[34mExecuting:\x1b[0m ${activeTab.request.method} ${activeTab.request.url}...`)
+    // Interpolate URL for display in terminal
+    const col = collectionsStore.collections.find(c => c.id === activeTab.collectionId)
+    const vars = col?.variables || {}
+    const displayUrl = collectionsStore.interpolate(activeTab.request.url, vars)
+    
+    term.writeln(`\r\n\x1b[34mExecuting:\x1b[0m ${activeTab.request.method} ${displayUrl}...`)
   }
 })
 

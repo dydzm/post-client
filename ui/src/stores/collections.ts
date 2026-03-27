@@ -14,25 +14,61 @@ export interface Collection {
   id: string
   name: string
   createdAt: number
+  variables?: Record<string, string>
 }
 
 export const useCollectionsStore = defineStore('collections', () => {
   const collections = ref<Collection[]>(
-    JSON.parse(localStorage.getItem('post-client-collection-groups') || '[{"id": "default", "name": "Default Collection", "createdAt": 1711370000000}]')
+    JSON.parse(localStorage.getItem('post-client-collection-groups') || '[{"id": "default", "name": "Default Collection", "createdAt": 1711370000000, "variables": {}}]')
   )
   
   const savedItems = ref<CollectionItem[]>(
     JSON.parse(localStorage.getItem('post-client-collections') || '[]')
   )
 
-  const addCollection = (name: string) => {
+  const addCollection = (name: string, variables: Record<string, string> = {}) => {
     const id = Math.random().toString(36).substring(7)
     collections.value.push({
       id,
       name,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      variables
     })
     return id
+  }
+
+  const updateCollectionVariables = (id: string, variables: Record<string, string>) => {
+    const col = collections.value.find(c => c.id === id)
+    if (col) {
+      col.variables = { ...variables }
+    }
+  }
+
+  const interpolate = (text: string, variables: Record<string, string> = {}) => {
+    if (!text || typeof text !== 'string') return text
+    return text.replace(/\{(\w+)\}/g, (match, key) => {
+      return variables[key] !== undefined ? variables[key] : match
+    })
+  }
+
+  const getInterpolatedRequest = (request: ApiRequest, collectionId?: string) => {
+    const col = collections.value.find(c => c.id === collectionId)
+    const vars = col?.variables || {}
+    
+    // Deep clone to avoid mutating original
+    const req = JSON.parse(JSON.stringify(request)) as ApiRequest
+    
+    req.url = interpolate(req.url, vars)
+    
+    Object.keys(req.headers).forEach(k => {
+      req.headers[k] = interpolate(req.headers[k], vars)
+    })
+    
+    if (req.body && typeof req.body === 'string') {
+      req.body = interpolate(req.body, vars)
+    }
+    
+    return req
   }
 
   const renameCollection = (id: string, newName: string) => {
@@ -150,6 +186,9 @@ export const useCollectionsStore = defineStore('collections', () => {
     collections,
     savedItems,
     addCollection,
+    updateCollectionVariables,
+    interpolate,
+    getInterpolatedRequest,
     renameCollection,
     deleteCollection,
     saveRequest,

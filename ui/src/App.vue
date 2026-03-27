@@ -16,8 +16,12 @@ import Toast from './components/Toast.vue'
 import SaveRequestModal from './components/SaveRequestModal.vue'
 import CollectionModal from './components/CollectionModal.vue'
 import ConfirmModal from './components/ConfirmModal.vue'
+import ImportTypeModal from './components/ImportTypeModal.vue'
+import ApiImportModal from './components/ApiImportModal.vue'
+import CollectionConfigModal from './components/CollectionConfigModal.vue'
 
-import { Menu, Plus, X, FolderTree, Download, Upload, GripVertical, ArrowLeftRight, LayoutGrid, Trash2, Edit3, ChevronRight, ChevronDown, Wrench, Copy } from 'lucide-vue-next'
+import { Menu, Plus, X, FolderTree, Download, Upload, GripVertical, ArrowLeftRight, LayoutGrid, Trash2, Edit3, ChevronRight, ChevronDown, Wrench, Copy, Settings } from 'lucide-vue-next'
+import { parseOpenApi, convertToApiRequests } from './lib/openapi-parser'
 
 const tabsStore = useTabsStore()
 const collectionsStore = useCollectionsStore()
@@ -55,6 +59,10 @@ const renameCollection = async (id: string, currentName: string) => {
   if (newName) {
     collectionsStore.renameCollection(id, newName)
   }
+}
+
+const openCollectionConfig = (id: string) => {
+  modalStore.open('collection-config', { data: { collectionId: id } })
 }
 
 const deleteCollection = async (id: string, name: string) => {
@@ -145,17 +153,24 @@ watch([expandedCollections, () => collectionsStore.savedItems], () => {
   })
 }, { deep: true, immediate: true })
 
-const importCollection = (event: Event) => {
+const importCollection = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
+  if (!file) return
+
+  // First, ask for import type
+  const type = await modalStore.open('import-type') as 'native' | 'openapi'
+  if (!type) return
+
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    const content = e.target?.result as string
+    
+    if (type === 'native') {
       try {
-        const imported = JSON.parse(e.target?.result as string)
+        const imported = JSON.parse(content)
         if (Array.isArray(imported)) {
-          // Handle complex export format
           imported.forEach(c => {
-            const newColId = collectionsStore.addCollection(c.name)
+            const newColId = collectionsStore.addCollection(c.name, c.variables || {})
             if (c.items && Array.isArray(c.items)) {
               c.items.forEach((item: any) => {
                 collectionsStore.saveRequest(item.name, item.request, newColId)
@@ -166,9 +181,28 @@ const importCollection = (event: Event) => {
       } catch (err) {
         modalStore.open('confirm', { title: 'Import Failed', message: 'Invalid collection file.', confirmLabel: 'OK' })
       }
+    } else {
+      // OpenAPI Import
+      const metadata = parseOpenApi(content)
+      if (metadata) {
+        const result = await modalStore.open('import-openapi', { data: { metadata } }) as { server: string }
+        if (result) {
+          const newColId = collectionsStore.addCollection(metadata.title, { baseUrl: result.server })
+          const requests = convertToApiRequests(metadata.rawContent, result.server)
+          requests.forEach(req => {
+            collectionsStore.saveRequest(req.name, req.request, newColId)
+          })
+          expandedCollections.value[newColId] = true
+        }
+      } else {
+        modalStore.open('confirm', { title: 'Import Failed', message: 'Could not parse OpenAPI file. Make sure it is a valid JSON or YAML file.', confirmLabel: 'OK' })
+      }
     }
-    reader.readAsText(file)
   }
+  reader.readAsText(file)
+  
+  // Reset input
+  ;(event.target as HTMLInputElement).value = ''
 }
 
 const openSavedRequest = (item: any) => {
@@ -246,6 +280,9 @@ const openSavedRequest = (item: any) => {
                    <span class="text-sm text-slate-300 truncate flex-1">{{ col.name }}</span>
                    
                    <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button @click.stop="openCollectionConfig(col.id)" class="p-1 text-slate-500 hover:text-accent" title="Variables">
+                        <Settings class="w-3 h-3" />
+                      </button>
                       <button @click.stop="renameCollection(col.id, col.name)" class="p-1 text-slate-500 hover:text-accent">
                         <Edit3 class="w-3 h-3" />
                       </button>
@@ -330,6 +367,9 @@ const openSavedRequest = (item: any) => {
     <SaveRequestModal v-if="modalStore.activeType === 'save'" />
     <CollectionModal v-if="modalStore.activeType === 'collection'" />
     <ConfirmModal v-if="modalStore.activeType === 'confirm'" />
+    <ImportTypeModal v-if="modalStore.activeType === 'import-type'" />
+    <ApiImportModal v-if="modalStore.activeType === 'import-openapi'" />
+    <CollectionConfigModal v-if="modalStore.activeType === 'collection-config'" />
 
     <Toast />
   </div>

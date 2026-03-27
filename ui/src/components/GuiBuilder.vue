@@ -187,10 +187,10 @@ const removeFile = (index: number) => {
 const sendRequest = async () => {
   if (!activeTab.value) return
   
-  // Clone request to avoid mutating original for Auth headers
-  const finalRequest = JSON.parse(JSON.stringify(activeTab.value.request))
+  // Apply variable interpolation
+  const finalRequest = collectionsStore.getInterpolatedRequest(activeTab.value.request, activeTab.value.collectionId)
   
-  // Apply Auth headers
+  // Apply Auth headers (after interpolation)
   if (finalRequest.auth.type === 'bearer' && finalRequest.auth.token) {
     finalRequest.headers['Authorization'] = `Bearer ${finalRequest.auth.token}`
   } else if (finalRequest.auth.type === 'basic' && finalRequest.auth.username) {

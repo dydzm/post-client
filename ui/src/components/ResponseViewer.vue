@@ -199,7 +199,8 @@ const previewUrl = computed(() => {
              <img :src="previewUrl" class="max-w-full max-h-full object-contain" />
           </div>
           <div v-else-if="isHtml" class="h-full border border-slate-800 rounded-lg bg-white overflow-hidden">
-             <iframe :src="previewUrl" class="w-full h-full border-none"></iframe>
+             <!-- KESE Hardening: Added sandbox for XSS protection -->
+             <iframe :src="previewUrl" sandbox="allow-scripts allow-forms" class="w-full h-full border-none"></iframe>
           </div>
           <div v-else-if="isJson" class="h-full flex flex-col bg-slate-900 border border-slate-800 rounded-lg overflow-hidden p-4">
              <div class="text-[10px] text-slate-500 mb-2 uppercase font-bold tracking-widest">Formatted JSON Preview</div>
