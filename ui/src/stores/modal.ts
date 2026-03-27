@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type ModalType = 'save' | 'collection' | 'confirm' | 'duplicate' | 'import-type' | 'import-openapi' | 'collection-config' | null
+export type ModalType = 'save' | 'collection' | 'confirm' | 'duplicate' | 'import-type' | 'import-openapi' | 'collection-config' | 'openapi-url' | null
 
 interface ModalOptions {
   title?: string

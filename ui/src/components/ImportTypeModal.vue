@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { useModalStore } from '../stores/modal'
 import BaseModal from './BaseModal.vue'
-import { FileJson, Zap } from 'lucide-vue-next'
+import { FileJson, Zap, Globe } from 'lucide-vue-next'
 
 const modalStore = useModalStore()
 
-const selectType = (type: 'native' | 'openapi') => {
+const selectType = (type: 'native' | 'openapi' | 'openapi-url') => {
   modalStore.confirm(type)
 }
 </script>
@@ -34,8 +34,21 @@ const selectType = (type: 'native' | 'openapi') => {
           <Zap class="w-6 h-6 text-purple-500" />
         </div>
         <div>
-          <div class="text-sm font-bold text-slate-200">OpenAPI 2.0, 3.0, 3.1</div>
-          <div class="text-[10px] text-slate-500">Import from Swagger or OpenAPI files</div>
+          <div class="text-sm font-bold text-slate-200">OpenAPI File</div>
+          <div class="text-[10px] text-slate-500">Import from local .json or .yaml files</div>
+        </div>
+      </button>
+
+      <button 
+        @click="selectType('openapi-url')"
+        class="flex items-center gap-4 p-4 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 hover:border-slate-600 transition-all text-left group"
+      >
+        <div class="bg-emerald-500/10 p-3 rounded-lg group-hover:bg-emerald-500/20 transition-colors">
+          <Globe class="w-6 h-6 text-emerald-500" />
+        </div>
+        <div>
+          <div class="text-sm font-bold text-slate-200">OpenAPI URL</div>
+          <div class="text-[10px] text-slate-500">Import from live openapi.json URL</div>
         </div>
       </button>
     </div>

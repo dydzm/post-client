@@ -184,6 +184,15 @@ const removeFile = (index: number) => {
   activeTab.value?.request.files.splice(index, 1)
 }
 
+const isLocalhost = (url: string) => {
+  try {
+    const hostname = new URL(url).hostname
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.')
+  } catch {
+    return url.includes('localhost') || url.includes('127.0.0.1')
+  }
+}
+
 const sendRequest = async () => {
   if (!activeTab.value) return
   
@@ -202,13 +211,49 @@ const sendRequest = async () => {
   activeTab.value.error = null
   activeTab.value.response = null
   
+  const useDirect = isLocalhost(finalRequest.url)
+  
   try {
-    const res = await axios.post('http://localhost:8000/execute', finalRequest)
-    activeTab.value.response = res.data
-    toastStore.addToast(`Request sent: ${res.data.status} OK`, 'success')
+    let resData;
+    const startTime = Date.now()
+
+    if (useDirect) {
+      // 1. Direct fetch from browser (for localhost)
+      const config: any = {
+        method: finalRequest.method,
+        url: finalRequest.url,
+        headers: finalRequest.headers,
+        params: finalRequest.query,
+        validateStatus: () => true // Don't throw on error codes
+      }
+
+      if (['POST', 'PUT', 'PATCH'].includes(finalRequest.method)) {
+        if (finalRequest.bodyType === 'json' && typeof finalRequest.body === 'string') {
+          try { config.data = JSON.parse(finalRequest.body) } catch { config.data = finalRequest.body }
+        } else {
+          config.data = finalRequest.body
+        }
+      }
+
+      const response = await axios(config)
+      resData = {
+        status: response.status,
+        headers: response.headers,
+        body: typeof response.data === 'object' ? JSON.stringify(response.data, null, 2) : response.data,
+        time_ms: Date.now() - startTime,
+        is_direct: true
+      }
+    } else {
+      // 2. Proxy through Backend (for external domains to bypass CORS)
+      const response = await axios.post('http://localhost:8000/execute', finalRequest)
+      resData = response.data
+    }
+
+    activeTab.value.response = resData
+    toastStore.addToast(`Request sent (${useDirect ? 'Direct' : 'Proxy'}): ${resData.status} OK`, 'success')
   } catch (err: any) {
     activeTab.value.error = err.response?.data?.detail || err.message
-    toastStore.addToast('Request failed', 'error')
+    toastStore.addToast(`Request failed (${useDirect ? 'Direct' : 'Proxy'})`, 'error')
   } finally {
     activeTab.value.isLoading = false
   }

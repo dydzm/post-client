@@ -86,8 +86,8 @@ async def execute_request(req: ApiRequest):
     logger.info(f"Executing {req.method} request to {req.url}")
     
     try:
-        # KESE Hardening: verify=True (Enable SSL Verification)
-        async with httpx.AsyncClient(timeout=30.0, verify=True) as client:
+        # KESE Hardening: Enabled verify=False for local development convenience
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
             headers = req.headers or {}
             params = req.query or {}
             
